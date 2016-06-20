@@ -11,6 +11,11 @@
 		6AA93AF01D16C1220070D273 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 6AA93AEF1D16C1220070D273 /* main.m */; };
 		6AA93AF21D16C1220070D273 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6AA93AF11D16C1220070D273 /* Assets.xcassets */; };
 		6AA93AF51D16C1220070D273 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 6AA93AF31D16C1220070D273 /* MainMenu.xib */; };
+		6AC632D81D16C34400DA1BF0 /* StencilRoutingTestView.m in Sources */ = {isa = PBXBuildFile; fileRef = 6AC632D71D16C34400DA1BF0 /* StencilRoutingTestView.m */; };
+		6AC632DA1D16C44D00DA1BF0 /* composite.fs.glsl in Resources */ = {isa = PBXBuildFile; fileRef = 6AC632D91D16C44D00DA1BF0 /* composite.fs.glsl */; };
+		6AC632DC1D16C4A000DA1BF0 /* composite.vs.glsl in Resources */ = {isa = PBXBuildFile; fileRef = 6AC632DB1D16C4A000DA1BF0 /* composite.vs.glsl */; };
+		6AC632DE1D16D67400DA1BF0 /* clear.vs.glsl in Resources */ = {isa = PBXBuildFile; fileRef = 6AC632DD1D16D67400DA1BF0 /* clear.vs.glsl */; };
+		6AC632E01D16D6B100DA1BF0 /* clear.fs.glsl in Resources */ = {isa = PBXBuildFile; fileRef = 6AC632DF1D16D6B100DA1BF0 /* clear.fs.glsl */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,6 +26,12 @@
 		6AA93AF11D16C1220070D273 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6AA93AF41D16C1220070D273 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
 		6AA93AF61D16C1220070D273 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		6AC632D61D16C34400DA1BF0 /* StencilRoutingTestView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StencilRoutingTestView.h; sourceTree = "<group>"; };
+		6AC632D71D16C34400DA1BF0 /* StencilRoutingTestView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = StencilRoutingTestView.m; sourceTree = "<group>"; };
+		6AC632D91D16C44D00DA1BF0 /* composite.fs.glsl */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = composite.fs.glsl; sourceTree = "<group>"; };
+		6AC632DB1D16C4A000DA1BF0 /* composite.vs.glsl */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = composite.vs.glsl; sourceTree = "<group>"; };
+		6AC632DD1D16D67400DA1BF0 /* clear.vs.glsl */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = clear.vs.glsl; sourceTree = "<group>"; };
+		6AC632DF1D16D6B100DA1BF0 /* clear.fs.glsl */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = clear.fs.glsl; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,8 +68,14 @@
 				6AA93AEC1D16C1220070D273 /* AppDelegate.m */,
 				6AA93AF11D16C1220070D273 /* Assets.xcassets */,
 				6AA93AF31D16C1220070D273 /* MainMenu.xib */,
+				6AC632D61D16C34400DA1BF0 /* StencilRoutingTestView.h */,
+				6AC632D71D16C34400DA1BF0 /* StencilRoutingTestView.m */,
 				6AA93AF61D16C1220070D273 /* Info.plist */,
 				6AA93AEE1D16C1220070D273 /* Supporting Files */,
+				6AC632DF1D16D6B100DA1BF0 /* clear.fs.glsl */,
+				6AC632D91D16C44D00DA1BF0 /* composite.fs.glsl */,
+				6AC632DD1D16D67400DA1BF0 /* clear.vs.glsl */,
+				6AC632DB1D16C4A000DA1BF0 /* composite.vs.glsl */,
 			);
 			path = StencilRoutingTest;
 			sourceTree = "<group>";
@@ -129,7 +146,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				6AA93AF21D16C1220070D273 /* Assets.xcassets in Resources */,
+				6AC632DE1D16D67400DA1BF0 /* clear.vs.glsl in Resources */,
 				6AA93AF51D16C1220070D273 /* MainMenu.xib in Resources */,
+				6AC632E01D16D6B100DA1BF0 /* clear.fs.glsl in Resources */,
+				6AC632DA1D16C44D00DA1BF0 /* composite.fs.glsl in Resources */,
+				6AC632DC1D16C4A000DA1BF0 /* composite.vs.glsl in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -141,6 +162,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6AA93AF01D16C1220070D273 /* main.m in Sources */,
+				6AC632D81D16C34400DA1BF0 /* StencilRoutingTestView.m in Sources */,
 				6AA93AED1D16C1220070D273 /* AppDelegate.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -281,6 +303,7 @@
 				6AA93AFB1D16C1220070D273 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
