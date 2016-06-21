@@ -5,6 +5,9 @@
 uniform vec2 uFramebufferSize;
 
 in vec2 aPosition;
+in vec2 aSourceUV;
+
+out vec2 vSourceUV;
 
 void main() {
     int which = gl_VertexID % 6;
@@ -18,5 +21,6 @@ void main() {
         y = floor(aPosition.y * uFramebufferSize.y);
     else
         y = ceil(aPosition.y * uFramebufferSize.y);
+    vSourceUV = aSourceUV;
     gl_Position = vec4(vec2(x, y) / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
 }

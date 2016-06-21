@@ -7,6 +7,7 @@
 //
 
 #import "StencilRoutingTestView.h"
+#import "DisplayListItem.h"
 #import <OpenGL/gl3.h>
 #import <OpenGL/gl.h>
 
@@ -18,6 +19,14 @@ const NSRect initialDisplayList[] = {
     { { 0.0f,   400.0f  }, { 400.0f, 400.0f } },
     { { 400.0f, 400.0f  }, { 400.0f, 400.0f } },
     { { 200.0f, 200.0f  }, { 400.0f, 400.0f } }
+};
+
+const NSRect initialDisplayListSourceUV[] = {
+    { { 2.0f, 0.0f }, { 1.0f, 1.0f } },
+    { { 2.0f, 0.0f }, { 1.0f, 1.0f } },
+    { { 2.0f, 0.0f }, { 1.0f, 1.0f } },
+    { { 2.0f, 0.0f }, { 1.0f, 1.0f } },
+    { { 1.0f, 0.0f }, { 1.0f, 1.0f } }
 };
 
 const GLfloat quadVertices[] = {
@@ -32,6 +41,15 @@ enum DisplayListParsingState {
     DisplayListParsingStateParsingItems,
     DisplayListParsingStateParsingStackingContexts
 };
+
+struct Vertex {
+    GLfloat x;
+    GLfloat y;
+    GLfloat u;
+    GLfloat v;
+};
+
+typedef struct Vertex Vertex;
 
 typedef enum DisplayListParsingState DisplayListParsingState;
 
@@ -58,9 +76,9 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     return self->context;
 }
 
-- (void)createOpenGLProgram:(GLint *)program
-           withVertexShader:(GLint *)vertexShader
-             fragmentShader:(GLint *)fragmentShader
+- (void)createOpenGLProgram:(GLuint *)program
+           withVertexShader:(GLuint *)vertexShader
+             fragmentShader:(GLuint *)fragmentShader
                        name:(NSString *)name {
     *vertexShader = glCreateShader(GL_VERTEX_SHADER);
     NSData *vertexShaderData = [[NSFileManager defaultManager] contentsAtPath:[[NSBundle mainBundle]pathForResource:name ofType:@"vs.glsl"]];
@@ -97,32 +115,24 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     return NSMakeSize(ceilf(viewSize.width / tileSize), ceilf(viewSize.height / tileSize));
 }
 
-- (void)rebuildFramebuffers {
-    if (self->multisampleFramebuffers[0] != 0) {
-        glDeleteFramebuffers(FRAMEBUFFER_COUNT, self->multisampleFramebuffers);
-        for (unsigned i = 0; i < FRAMEBUFFER_COUNT; i++)
-            self->multisampleFramebuffers[i] = 0;
-    }
-    if (self->multisampleRenderbuffers[0] != 0) {
-        glDeleteRenderbuffers(FRAMEBUFFER_COUNT, self->multisampleRenderbuffers);
-        for (unsigned i = 0; i < FRAMEBUFFER_COUNT; i++)
-            self->multisampleRenderbuffers[i] = 0;
-    }
-    if (self->multisampleTextures[0] != 0) {
-        glDeleteTextures(FRAMEBUFFER_COUNT, self->multisampleTextures);
-        for (unsigned i = 0; i < FRAMEBUFFER_COUNT; i++)
-            self->multisampleTextures[i] = 0;
-    }
-
-    glGenTextures(FRAMEBUFFER_COUNT, self->multisampleTextures);
-    glGenRenderbuffers(FRAMEBUFFER_COUNT, self->multisampleRenderbuffers);
-    glGenFramebuffers(FRAMEBUFFER_COUNT, self->multisampleFramebuffers);
-    
-    NSSize framebufferSize = [self framebufferSize];
-
+- (void)getTextureUniformLocations:(GLint *)uniforms forProgram:(GLint)program {
     for (unsigned i = 0; i < FRAMEBUFFER_COUNT; i++) {
+        NSString *uniformName = [NSString stringWithFormat:@"uTexture%u", i];
+        uniforms[i] = glGetUniformLocation(program, [uniformName cStringUsingEncoding:NSUTF8StringEncoding]);
+    }
+}
+
+- (void)ensureFramebufferValid:(unsigned)index {
+    while (self->validFramebufferCount <= index) {
+        unsigned framebufferIndex = self->validFramebufferCount;
+        glGenTextures(1, &self->multisampleTextures[framebufferIndex]);
+        glGenRenderbuffers(1, &self->multisampleRenderbuffers[framebufferIndex]);
+        glGenFramebuffers(1, &self->multisampleFramebuffers[framebufferIndex]);
+    
+        NSSize framebufferSize = [self framebufferSize];
+
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, self->multisampleTextures[i]);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, self->multisampleTextures[framebufferIndex]);
         glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE,
                                 [self samples],
                                 GL_RGBA,
@@ -131,46 +141,74 @@ typedef enum DisplayListParsingState DisplayListParsingState;
                                 GL_TRUE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glBindRenderbuffer(GL_RENDERBUFFER, self->multisampleRenderbuffers[i]);
+        glBindRenderbuffer(GL_RENDERBUFFER, self->multisampleRenderbuffers[framebufferIndex]);
         glRenderbufferStorageMultisample(GL_RENDERBUFFER,
                                          [self samples],
                                          GL_DEPTH_STENCIL,
                                          (GLint)framebufferSize.width,
                                          (GLint)framebufferSize.height);
-        glBindFramebuffer(GL_FRAMEBUFFER, self->multisampleFramebuffers[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, self->multisampleFramebuffers[framebufferIndex]);
         glFramebufferTexture2D(GL_FRAMEBUFFER,
                                GL_COLOR_ATTACHMENT0,
                                GL_TEXTURE_2D_MULTISAMPLE,
-                               self->multisampleTextures[i],
+                               self->multisampleTextures[framebufferIndex],
                                0);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER,
                                   GL_DEPTH_STENCIL_ATTACHMENT,
                                   GL_RENDERBUFFER,
-                                  self->multisampleRenderbuffers[i]);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+                                  self->multisampleRenderbuffers[framebufferIndex]);
+    
+        self->validFramebufferCount++;
     }
     
-    self->framebuffersValid = YES;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+}
+
+- (void)invalidateFramebuffers {
+    glDeleteFramebuffers(self->validFramebufferCount, self->multisampleFramebuffers);
+    for (unsigned i = 0; i < self->validFramebufferCount; i++)
+        self->multisampleFramebuffers[i] = 0;
+    glDeleteRenderbuffers(self->validFramebufferCount, self->multisampleRenderbuffers);
+    for (unsigned i = 0; i < self->validFramebufferCount; i++)
+        self->multisampleRenderbuffers[i] = 0;
+    glDeleteTextures(self->validFramebufferCount, self->multisampleTextures);
+    for (unsigned i = 0; i < self->validFramebufferCount; i++)
+        self->multisampleTextures[i] = 0;
+
+    self->validFramebufferCount = 0;
 }
 
 - (void)frameChanged:(NSNotification *)notification {
-    self->framebuffersValid = NO;
+    [self invalidateFramebuffers];
 }
 
-- (void)fillVertex:(GLfloat *)vertex withPoint:(NSPoint)point {
+- (void)fillVertex:(Vertex *)vertex withPosition:(NSPoint)position uv:(NSPoint)uv {
     NSSize viewSize = [self frame].size;
-    vertex[0] = point.x / viewSize.width;
-    vertex[1] = point.y / viewSize.height;
+    vertex->x = position.x / viewSize.width;
+    vertex->y = position.y / viewSize.height;
+    vertex->u = uv.x;
+    vertex->v = uv.y;
+}
+
+- (void)loadInitialDisplayList {
+    self->displayList = (NSRect *)malloc(sizeof(initialDisplayList));
+    self->displayListSourceUV = (NSRect *)malloc(sizeof(initialDisplayListSourceUV));
+    memcpy(self->displayList, initialDisplayList, sizeof(initialDisplayList));
+    memcpy(self->displayListSourceUV, initialDisplayListSourceUV, sizeof(initialDisplayListSourceUV));
+    self->displayListSize = sizeof(initialDisplayList) / sizeof(initialDisplayList[0]);
+    
+    NSImage *initialSourceImage = [self createNewSourceImage];
+    [[NSColor blueColor] setFill];
+    NSRectFill(NSMakeRect(2.0, 255.0, 1.0, 1.0));
+    [self finalizeSourceImage:initialSourceImage];
+    self->sourceImage = initialSourceImage;
 }
 
 - (void)prepareOpenGL {
-    if (self->displayList == NULL) {
-        self->displayList = (NSRect *)malloc(sizeof(initialDisplayList));
-        memcpy(self->displayList, initialDisplayList, sizeof(initialDisplayList));
-        self->displayListSize = sizeof(initialDisplayList) / sizeof(initialDisplayList[0]);
-    }
+    if (self->displayList == NULL)
+        [self loadInitialDisplayList];
 
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(frameChanged:)
@@ -181,14 +219,6 @@ typedef enum DisplayListParsingState DisplayListParsingState;
              withVertexShader:&self->compositeVertexShader
                fragmentShader:&self->compositeFragmentShader
                          name:@"composite"];
-    glUseProgram(self->compositeProgram);
-    self->compositePositionAttribute = glGetAttribLocation(self->compositeProgram, "aPosition");
-    for (unsigned i = 0; i < FRAMEBUFFER_COUNT; i++) {
-        NSString *uniformName = [NSString stringWithFormat:@"uTexture%u", i];
-        self->compositeTextureUniforms[i] = glGetUniformLocation(self->compositeProgram,
-                                                                 [uniformName cStringUsingEncoding:NSUTF8StringEncoding]);
-    }
-    self->compositeTileSizeUniform = glGetUniformLocation(self->compositeProgram, "uTileSize");
     
     [self createOpenGLProgram:&self->clearProgram
              withVertexShader:&self->clearVertexShader
@@ -200,26 +230,38 @@ typedef enum DisplayListParsingState DisplayListParsingState;
                fragmentShader:&self->tileFragmentShader
                          name:@"tile"];
     
-    glGenVertexArrays(1, &self->quadVertexArrayObject);
-    glBindVertexArray(self->quadVertexArrayObject);
-    glUseProgram(self->clearProgram);
+    self->compositePositionAttribute = glGetAttribLocation(self->compositeProgram, "aPosition");
+    self->compositeTileSizeUniform = glGetUniformLocation(self->compositeProgram, "uTileSize");
+    self->compositeDepthUniform = glGetUniformLocation(self->compositeProgram, "uDepth");
+    [self getTextureUniformLocations:self->compositeTextureUniforms forProgram:self->compositeProgram];
+    self->compositeSourceTextureUniform = glGetUniformLocation(self->compositeProgram, "uSourceTexture");
+    
     self->clearPositionAttribute = glGetAttribLocation(self->clearProgram, "aPosition");
     self->clearColorUniform = glGetUniformLocation(self->clearProgram, "uColor");
-
+    
+    self->compositeTileSizeUniform = glGetUniformLocation(self->compositeProgram, "uTileSize");
+    self->compositeDepthUniform = glGetUniformLocation(self->compositeProgram, "uDepth");
+    
+    self->tilePositionAttribute = glGetAttribLocation(self->tileProgram, "aPosition");
+    self->tileSourceUVAttribute = glGetAttribLocation(self->tileProgram, "aSourceUV");
+    self->tileFramebufferSizeUniform = glGetUniformLocation(self->tileProgram, "uFramebufferSize");
+    
     glGenBuffers(1, &self->quadVertexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, self->quadVertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+    glGenBuffers(1, &self->displayListVertexBuffer);
+    
+    glGenVertexArrays(1, &self->clearQuadVertexArrayObject);
+    glBindVertexArray(self->clearQuadVertexArrayObject);
+    glUseProgram(self->clearProgram);
     glBindBuffer(GL_ARRAY_BUFFER, self->quadVertexBuffer);
     glVertexAttribPointer(self->clearPositionAttribute, 2, GL_FLOAT, GL_FALSE, 0, (const GLvoid *)0);
     glEnableVertexAttribArray(self->clearPositionAttribute);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
     
     glGenVertexArrays(1, &self->clearDisplayListVertexArrayObject);
     glBindVertexArray(self->clearDisplayListVertexArrayObject);
     glUseProgram(self->clearProgram);
-    
-    glUseProgram(self->compositeProgram);
-    self->compositeTileSizeUniform = glGetUniformLocation(self->compositeProgram, "uTileSize");
-
-    glGenBuffers(1, &self->displayListVertexBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, self->displayListVertexBuffer);
     glVertexAttribPointer(self->clearPositionAttribute, 2, GL_FLOAT, GL_FALSE, 0, (const GLvoid *)0);
     glEnableVertexAttribArray(self->clearPositionAttribute);
@@ -227,14 +269,27 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     glGenVertexArrays(1, &self->tileDisplayListVertexArrayObject);
     glBindVertexArray(self->tileDisplayListVertexArrayObject);
     glUseProgram(self->tileProgram);
-    self->tilePositionAttribute = glGetAttribLocation(self->tileProgram, "aPosition");
-    self->tileColorUniform = glGetUniformLocation(self->tileProgram, "uColor");
-    self->tileFramebufferSizeUniform = glGetUniformLocation(self->tileProgram, "uFramebufferSize");
-    
     glBindBuffer(GL_ARRAY_BUFFER, self->displayListVertexBuffer);
-    glVertexAttribPointer(self->tilePositionAttribute, 2, GL_FLOAT, GL_FALSE, 0, (const GLvoid *)0);
+    glVertexAttribPointer(self->tilePositionAttribute,
+                          2,
+                          GL_FLOAT,
+                          GL_FALSE,
+                          sizeof(Vertex),
+                          (const GLvoid *)0);
+    glVertexAttribPointer(self->tileSourceUVAttribute,
+                          2,
+                          GL_FLOAT,
+                          GL_FALSE,
+                          sizeof(Vertex),
+                          (const GLvoid *)offsetof(Vertex, u));
     glEnableVertexAttribArray(self->tilePositionAttribute);
+    glEnableVertexAttribArray(self->tileSourceUVAttribute);
     
+    glGenTextures(1, &self->sourceTexture);
+    glBindTexture(GL_TEXTURE_2D, self->sourceTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
     glGenQueries(1, &self->samplesPassedQuery);
     glGenQueries(1, &self->tilingTimeElapsedQuery);
     glGenQueries(1, &self->compositingTimeElapsedQuery);
@@ -255,6 +310,19 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     return (double)timeElapsed / (double)1000000.0;
 }
 
+- (void)bindFramebufferTextures:(unsigned)usedFramebufferCount toUniforms:(GLint *)uniforms {
+    for (unsigned i = 0; i < usedFramebufferCount; i++) {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, self->multisampleTextures[i]);
+        glUniform1i(uniforms[i], i);
+    }
+    for (unsigned i = usedFramebufferCount; i < FRAMEBUFFER_COUNT; i++) {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+        glUniform1i(uniforms[i], 0);
+    }
+}
+
 - (void)drawRect:(NSRect)dirtyRect {
     [super drawRect:dirtyRect];
     
@@ -262,9 +330,6 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     [[self openGLContext] update];
 
     // Drawing code here.
-    if (!self->framebuffersValid)
-        [self rebuildFramebuffers];
-
     glBeginQuery(GL_TIME_ELAPSED_EXT, self->tilingTimeElapsedQuery);
 
     NSSize framebufferSize = [self framebufferSize];
@@ -272,24 +337,53 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     // Generate the display list vertices.
     glBindVertexArray(self->clearDisplayListVertexArrayObject);
     glBindBuffer(GL_ARRAY_BUFFER, self->displayListVertexBuffer);
-    size_t displayListVerticesSize = sizeof(GLfloat) * self->displayListSize * 12;
-    GLfloat *displayListVertices = (GLfloat *)malloc(displayListVerticesSize);
+    size_t displayListVerticesSize = sizeof(Vertex) * self->displayListSize * 6;
+    Vertex *displayListVertices = (Vertex *)malloc(displayListVerticesSize);
     for (unsigned i = 0; i < self->displayListSize; i++) {
-        NSPoint topRight = NSMakePoint(NSMaxX(self->displayList[i]), self->displayList[i].origin.y);
-        NSPoint bottomRight = NSMakePoint(NSMaxX(self->displayList[i]), NSMaxY(self->displayList[i]));
-        NSPoint bottomLeft = NSMakePoint(self->displayList[i].origin.x, NSMaxY(self->displayList[i]));
-        [self fillVertex: &displayListVertices[i * 12 + 0] withPoint: self->displayList[i].origin];
-        [self fillVertex: &displayListVertices[i * 12 + 2] withPoint: topRight];
-        [self fillVertex: &displayListVertices[i * 12 + 4] withPoint: bottomLeft];
-        [self fillVertex: &displayListVertices[i * 12 + 6] withPoint: topRight];
-        [self fillVertex: &displayListVertices[i * 12 + 8] withPoint: bottomRight];
-        [self fillVertex: &displayListVertices[i * 12 + 10] withPoint: bottomLeft];
+        NSPoint topLeftPosition = self->displayList[i].origin;
+        NSPoint topRightPosition = NSMakePoint(NSMaxX(self->displayList[i]), self->displayList[i].origin.y);
+        NSPoint bottomRightPosition = NSMakePoint(NSMaxX(self->displayList[i]),
+                                                  NSMaxY(self->displayList[i]));
+        NSPoint bottomLeftPosition = NSMakePoint(self->displayList[i].origin.x,
+                                                 NSMaxY(self->displayList[i]));
+        NSPoint uv = NSMakePoint(NSMidX(self->displayListSourceUV[i]), NSMidY(self->displayListSourceUV[i]));
+        [self fillVertex:&displayListVertices[i * 6 + 0] withPosition:topLeftPosition uv:uv];
+        [self fillVertex:&displayListVertices[i * 6 + 1] withPosition:topRightPosition uv:uv];
+        [self fillVertex:&displayListVertices[i * 6 + 2] withPosition:bottomLeftPosition uv:uv];
+        [self fillVertex:&displayListVertices[i * 6 + 3] withPosition:topRightPosition uv:uv];
+        [self fillVertex:&displayListVertices[i * 6 + 4] withPosition:bottomRightPosition uv:uv];
+        [self fillVertex:&displayListVertices[i * 6 + 5] withPosition:bottomLeftPosition uv:uv];
     }
     glBufferData(GL_ARRAY_BUFFER, displayListVerticesSize, displayListVertices, GL_DYNAMIC_DRAW);
     free(displayListVertices);
+    
+    // Upload the texture.
+    [self->sourceImage lockFocus];
+    CGFloat backingScaleFactor = [[NSScreen mainScreen] backingScaleFactor];
+    NSSize sourceImageSize = [self->sourceImage size];
+    NSBitmapImageRep *imageRep = [[NSBitmapImageRep alloc]
+                                  initWithFocusedViewRect:NSMakeRect(0.0,
+                                                                     0.0,
+                                                                     sourceImageSize.width,
+                                                                     sourceImageSize.height)];
+    NSAssert([imageRep bitmapFormat] == 0, @"Image in unexpected format!");
+    glBindTexture(GL_TEXTURE_2D, self->sourceTexture);
+    glTexImage2D(GL_TEXTURE_2D,
+                 0,
+                 GL_RGBA,
+                 sourceImageSize.width * backingScaleFactor,
+                 sourceImageSize.height * backingScaleFactor,
+                 0,
+                 GL_RGBA,
+                 GL_UNSIGNED_BYTE,
+                 [imageRep bitmapData]);
+    [self->sourceImage unlockFocus];
 
     unsigned framebuffersUsed = 0;
     while (framebuffersUsed < FRAMEBUFFER_COUNT) {
+        // Initialize the framebuffer if necessary.
+        [self ensureFramebufferValid:framebuffersUsed];
+        
         // Clear.
         glBindFramebuffer(GL_FRAMEBUFFER, self->multisampleFramebuffers[framebuffersUsed]);
         glViewport(0, 0, (GLint)framebufferSize.width, (GLint)framebufferSize.height);
@@ -299,11 +393,12 @@ typedef enum DisplayListParsingState DisplayListParsingState;
 
         // Initialize stencil buffer for routing.
         glUseProgram(self->clearProgram);
-        glBindVertexArray(self->quadVertexArrayObject);
+        glBindVertexArray(self->clearQuadVertexArrayObject);
         glBindBuffer(GL_ARRAY_BUFFER, self->quadVertexBuffer);
         glEnable(GL_STENCIL_TEST);
         glEnable(GL_MULTISAMPLE);
         glEnable(GL_SAMPLE_MASK);
+        glDisable(GL_DEPTH_TEST);
         glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
         glUniform4f(self->clearColorUniform, 0.0f, 0.0f, 0.0f, 1.0f);
         for (unsigned sample = 0; sample < [self samples]; sample++) {
@@ -321,22 +416,22 @@ typedef enum DisplayListParsingState DisplayListParsingState;
         glDisable(GL_MULTISAMPLE);
         glDisable(GL_SAMPLE_MASK);
         glEnable(GL_STENCIL_TEST);
+        glDisable(GL_DEPTH_TEST);
         glSampleMaski(0, ~0);
         glStencilFunc(GL_EQUAL, 2, ~0);
         glStencilOp(GL_DECR, GL_DECR, GL_DECR);
-        GLfloat genericColor = (GLfloat)1.0 / (GLfloat)([self samples] * MIN(FRAMEBUFFER_COUNT, 8));
-        glUniform4f(self->tileColorUniform, genericColor, genericColor, genericColor, 1.0f);
         glUniform2f(self->tileFramebufferSizeUniform, framebufferSize.width, framebufferSize.height);
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)self->displayListSize * 6);
 
         // Check for overflow.
         glUseProgram(self->clearProgram);
-        glBindVertexArray(self->quadVertexArrayObject);
+        glBindVertexArray(self->clearQuadVertexArrayObject);
         glBindBuffer(GL_ARRAY_BUFFER, self->quadVertexBuffer);
         glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
         glEnable(GL_MULTISAMPLE);
         glEnable(GL_SAMPLE_MASK);
         glEnable(GL_STENCIL_TEST);
+        glDisable(GL_DEPTH_TEST);
         glSampleMaski(0, 1 << ([self samples] - 1));
         glStencilFunc(GL_EQUAL, 0, ~0);
         glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
@@ -355,35 +450,38 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     
     glEndQuery(GL_TIME_ELAPSED_EXT);
 
-    // Composite.
-    glBeginQuery(GL_TIME_ELAPSED_EXT, self->compositingTimeElapsedQuery);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindVertexArray(self->quadVertexArrayObject);
-    glBindBuffer(GL_ARRAY_BUFFER, self->quadVertexBuffer);
-    float backingScaleFactor = [[self window] backingScaleFactor];
-    glDisable(GL_MULTISAMPLE);
-    glDisable(GL_SAMPLE_MASK);
-    glDisable(GL_STENCIL_TEST);
     glViewport(0,
                0,
                (GLint)([self frame].size.width * backingScaleFactor),
                (GLint)([self frame].size.height * backingScaleFactor));
+    glBeginQuery(GL_TIME_ELAPSED_EXT, self->compositingTimeElapsedQuery);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glClearColor(1.0, 1.0, 1.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    
+    // Composite.
+    glBindVertexArray(self->clearQuadVertexArrayObject);    // FIXME(pcwalton): Dodgy.
+    glBindBuffer(GL_ARRAY_BUFFER, self->quadVertexBuffer);
+    glDisable(GL_MULTISAMPLE);
+    glDisable(GL_SAMPLE_MASK);
+    glDisable(GL_STENCIL_TEST);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glUseProgram(self->compositeProgram);
-    
-    for (unsigned i = 0; i < MIN(FRAMEBUFFER_COUNT, 8); i++) {
-        glActiveTexture(GL_TEXTURE0 + i);
-        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, self->multisampleTextures[i]);
-        glUniform1i(self->compositeTextureUniforms[i], i);
-    }
-
+    [self bindFramebufferTextures:framebuffersUsed toUniforms:self->compositeTextureUniforms];
+    glActiveTexture(GL_TEXTURE0 + FRAMEBUFFER_COUNT);
+    glBindTexture(GL_TEXTURE_2D, self->sourceTexture);
+    glUniform1i(self->compositeSourceTextureUniform, FRAMEBUFFER_COUNT);
     glUniform1f(self->compositeTileSizeUniform, (GLfloat)[self tileSize]);
+    glUniform1i(self->compositeDepthUniform, 8);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
     glEndQuery(GL_TIME_ELAPSED_EXT);
 
     glFlush();
+    
     double tilingTimeElapsed = [self getTimingFor:self->tilingTimeElapsedQuery];
     double compositingTimeElapsed = [self getTimingFor:self->compositingTimeElapsedQuery];
     double totalTimeElapsed = tilingTimeElapsed + compositingTimeElapsed;
@@ -409,6 +507,28 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     [self setNeedsDisplay:YES];
 }
 
+- (NSImage *)createNewSourceImage {
+    // Create the source image.
+    CGFloat factor = [[NSScreen mainScreen] backingScaleFactor];
+    NSImage *newSourceImage = [[NSImage alloc] initWithSize:NSMakeSize(256.0 / factor, 256.0 / factor)];
+    [newSourceImage lockFocus];
+    [[[NSAffineTransform alloc] init] set];
+    [[NSColor clearColor] setFill];
+    NSRectFill(NSMakeRect(0.0, 0.0, 256.0, 256.0));
+    
+    // Create the "greeking" checkerboard for text.
+    [[NSColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:1.0] setFill];
+    NSRectFill(NSMakeRect(1.0, 255.0, 1.0, 1.0));
+    NSRectFill(NSMakeRect(0.0, 254.0, 1.0, 1.0));
+    
+    return newSourceImage;
+}
+
+- (void)finalizeSourceImage:(NSImage *)image {
+    [[NSGraphicsContext currentContext] flushGraphics];
+    [image unlockFocus];
+}
+
 - (void)loadDisplayList:(NSFileHandle *)fileHandle {
     NSString *string = [[NSString alloc] initWithData:[fileHandle readDataToEndOfFile]
                                              encoding:NSUTF8StringEncoding];
@@ -421,7 +541,7 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     NSMutableArray *parentStack = [[NSMutableArray alloc] init];
     NSError *error = nil;
     NSRegularExpression *itemRegex = [NSRegularExpression regularExpressionWithPattern:
-                                      @"│  │  ├─ \\w+ [^@]*@ Rect\\(([0-9.-]+)px×([0-9.-]+)px at \\(([0-9.-]+)px,([0-9.-]+)px\\)\\) .* StackingContext: StackingContextId\\((\\d+)\\)"
+                                      @"│  │  ├─ (\\w+) ([^@]*)@ Rect\\(([0-9.-]+)px×([0-9.-]+)px at \\(([0-9.-]+)px,([0-9.-]+)px\\)\\) .* StackingContext: StackingContextId\\((\\d+)\\)"
                                                                                options:0
                                                                                  error:&error];
     if (itemRegex == nil)
@@ -432,9 +552,18 @@ typedef enum DisplayListParsingState DisplayListParsingState;
                                                                                             error:&error];
     if (stackingContextRegex == nil)
         @throw error;
+    NSRegularExpression *solidColorDescriptionRegex = [NSRegularExpression regularExpressionWithPattern:@"rgba\\(([0-9.]+), ([0-9.]+), ([0-9.]+), ([0-9.]+)\\)"
+                             options:0
+                               error:&error];
+    if (solidColorDescriptionRegex == nil)
+        @throw error;
+    
     [string enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
         NSTextCheckingResult *textCheckingResult = nil;
         NSNumber *stackingContextId = nil;
+        DisplayListItem *displayListItem = nil;
+        NSString *itemType = nil;
+        NSString *itemDescription = nil;
         BOOL newDisplayList = [line hasPrefix:@"┌ Display List"];
         if (state != DisplayListParsingStateBegin && newDisplayList) {
             *stop = YES;
@@ -455,19 +584,21 @@ typedef enum DisplayListParsingState DisplayListParsingState;
                                                              range:NSMakeRange(0, [line length])];
                 if (textCheckingResult == nil)
                     break;
-                if ([line containsString:@"SolidColor rgba(0, 0, 0, 0)"])
-                    break;
                 NSRect bounds = NSMakeRect(
+                    [[line substringWithRange:[textCheckingResult rangeAtIndex:5]] floatValue],
+                    [[line substringWithRange:[textCheckingResult rangeAtIndex:6]] floatValue],
                     [[line substringWithRange:[textCheckingResult rangeAtIndex:3]] floatValue],
-                    [[line substringWithRange:[textCheckingResult rangeAtIndex:4]] floatValue],
-                    [[line substringWithRange:[textCheckingResult rangeAtIndex:1]] floatValue],
-                    [[line substringWithRange:[textCheckingResult rangeAtIndex:2]] floatValue]);
+                    [[line substringWithRange:[textCheckingResult rangeAtIndex:4]] floatValue]);
                 stackingContextId = [NSNumber numberWithLongLong:
-                                     [[line substringWithRange:[textCheckingResult rangeAtIndex:5]] longLongValue]];
+                                     [[line substringWithRange:[textCheckingResult rangeAtIndex:7]] longLongValue]];
                 if ([stackingContextItems objectForKey:stackingContextId] == nil)
                     [stackingContextItems setObject:[[NSMutableArray alloc] init] forKey:stackingContextId];
-                [[stackingContextItems objectForKey:stackingContextId]
-                 addObject:[NSValue valueWithRect:bounds]];
+                itemType = [line substringWithRange:[textCheckingResult rangeAtIndex:1]];
+                itemDescription = [line substringWithRange:[textCheckingResult rangeAtIndex:2]];
+                displayListItem = [DisplayListItem displayListItemWithBounds:bounds
+                                                                        type:itemType
+                                                                 description:itemDescription];
+                [[stackingContextItems objectForKey:stackingContextId] addObject:displayListItem];
                 break;
             case DisplayListParsingStateParsingStackingContexts:
                 textCheckingResult = [stackingContextRegex firstMatchInString:line
@@ -498,10 +629,15 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     while ((items = [stackingContextItemsEnumerator nextObject]) != nil)
         displayListItemsSize += [items count];
 
+    // Create the source image.
+    NSImage *newSourceImage = [self createNewSourceImage];
+    
     NSRect *displayListItems = (NSRect *)malloc(sizeof(NSRect) * displayListItemsSize);
+    NSRect *displayListItemsSourceUV = (NSRect *)malloc(sizeof(NSRect) * displayListItemsSize);
     size_t nextDisplayListItem = 0;
     NSEnumerator *stackingContextIdEnumerator = [stackingContextOrdering objectEnumerator];
     NSNumber *stackingContextId = nil;
+    uint16_t nextSourceImageX = 2;
     while ((stackingContextId = [stackingContextIdEnumerator nextObject]) != nil) {
         NSPoint stackingContextOffset = [[stackingContextOffsets objectForKey:stackingContextId] pointValue];
         NSNumber *stackingContextParentId = [stackingContextParents objectForKey:stackingContextId];
@@ -513,21 +649,54 @@ typedef enum DisplayListParsingState DisplayListParsingState;
         }
         items = [stackingContextItems objectForKey:stackingContextId];
         NSEnumerator *itemEnumerator = [items objectEnumerator];
-        NSValue *item = nil;
+        DisplayListItem *item = nil;
         while ((item = [itemEnumerator nextObject]) != nil) {
             NSAssert(nextDisplayListItem < displayListItemsSize, @"Out of display item space!");
-            displayListItems[nextDisplayListItem] = NSOffsetRect([item rectValue],
+            if ([[item itemType] isEqualToString:@"SolidColor"]) {
+                NSString *description = [item itemDescription];
+                NSTextCheckingResult *textCheckingResult = [solidColorDescriptionRegex
+                                                            firstMatchInString:description
+                                                                       options:0
+                                                                         range:NSMakeRange(0, [description length])];
+                float r = [[description substringWithRange:[textCheckingResult rangeAtIndex:1]] floatValue];
+                float g = [[description substringWithRange:[textCheckingResult rangeAtIndex:2]] floatValue];
+                float b = [[description substringWithRange:[textCheckingResult rangeAtIndex:3]] floatValue];
+                float a = [[description substringWithRange:[textCheckingResult rangeAtIndex:4]] floatValue];
+                if (a == 0.0f)
+                    continue;
+
+                NSColor *color = [NSColor colorWithRed:(CGFloat)r
+                                                 green:(CGFloat)g
+                                                  blue:(CGFloat)b
+                                                 alpha:(CGFloat)a];
+                [color setFill];
+                NSRectFill(NSMakeRect((CGFloat)nextSourceImageX, 255.0, 1.0, 1.0));
+                displayListItemsSourceUV[nextDisplayListItem] = NSMakeRect((CGFloat)nextSourceImageX,
+                                                                           0.0,
+                                                                           1.0,
+                                                                           1.0);
+                nextSourceImageX++;
+            } else {
+                displayListItemsSourceUV[nextDisplayListItem] = NSMakeRect(1.0, 0.0, 1.0, 1.0);
+            }
+
+            displayListItems[nextDisplayListItem] = NSOffsetRect([item bounds],
                                                                  stackingContextOffset.x,
                                                                  stackingContextOffset.y);
+            
             nextDisplayListItem++;
         }
     }
 
-    NSAssert(nextDisplayListItem == displayListItemsSize, @"Didn't fill all display items!");
     free(self->displayList);
+    free(self->displayListSourceUV);
     self->displayList = displayListItems;
-    self->displayListSize = displayListItemsSize;
+    self->displayListSourceUV = displayListItemsSourceUV;
+    self->displayListSize = nextDisplayListItem;
     
+    [self finalizeSourceImage:newSourceImage];
+    self->sourceImage = newSourceImage;
+
     [self redraw:self];
 }
 

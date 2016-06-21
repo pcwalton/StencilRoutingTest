@@ -2,10 +2,10 @@
 
 #version 150
 
-uniform vec4 uColor;
+in vec2 vSourceUV;
 
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = uColor;
+    oFragColor = vec4(vSourceUV / vec2(255.0, 255.0), 0.0, 0.0);
 }
