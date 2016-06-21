@@ -35,6 +35,10 @@ enum DisplayListParsingState {
 
 typedef enum DisplayListParsingState DisplayListParsingState;
 
+- (GLuint)samples {
+    return [[self->samplesField titleOfSelectedItem] intValue];
+}
+
 - (NSOpenGLContext *)openGLContext {
     if (self->context == nil) {
         NSOpenGLPixelFormatAttribute attributes[] = {
@@ -43,7 +47,7 @@ typedef enum DisplayListParsingState DisplayListParsingState;
             NSOpenGLPFADoubleBuffer,
             NSOpenGLPFADepthSize, 16,
             NSOpenGLPFAMultisample,
-            NSOpenGLPFASamples, 4,
+            NSOpenGLPFASamples, [self samples],
             NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core,
             0
         };
@@ -93,68 +97,72 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     return NSMakeSize(ceilf(viewSize.width / tileSize), ceilf(viewSize.height / tileSize));
 }
 
-- (void)rebuildFramebuffer {
-    if (self->multisampleFramebuffer != 0) {
-        glDeleteFramebuffers(1, &self->multisampleFramebuffer);
-        self->multisampleFramebuffer = 0;
+- (void)rebuildFramebuffers {
+    if (self->multisampleFramebuffers[0] != 0) {
+        glDeleteFramebuffers(FRAMEBUFFER_COUNT, self->multisampleFramebuffers);
+        for (unsigned i = 0; i < FRAMEBUFFER_COUNT; i++)
+            self->multisampleFramebuffers[i] = 0;
     }
-    if (self->multisampleRenderbuffer != 0) {
-        glDeleteRenderbuffers(1, &self->multisampleRenderbuffer);
-        self->multisampleRenderbuffer = 0;
+    if (self->multisampleRenderbuffers[0] != 0) {
+        glDeleteRenderbuffers(FRAMEBUFFER_COUNT, self->multisampleRenderbuffers);
+        for (unsigned i = 0; i < FRAMEBUFFER_COUNT; i++)
+            self->multisampleRenderbuffers[i] = 0;
     }
-    if (self->multisampleTexture != 0) {
-        glDeleteTextures(1, &self->multisampleTexture);
-        self->multisampleTexture = 0;
+    if (self->multisampleTextures[0] != 0) {
+        glDeleteTextures(FRAMEBUFFER_COUNT, self->multisampleTextures);
+        for (unsigned i = 0; i < FRAMEBUFFER_COUNT; i++)
+            self->multisampleTextures[i] = 0;
     }
 
+    glGenTextures(FRAMEBUFFER_COUNT, self->multisampleTextures);
+    glGenRenderbuffers(FRAMEBUFFER_COUNT, self->multisampleRenderbuffers);
+    glGenFramebuffers(FRAMEBUFFER_COUNT, self->multisampleFramebuffers);
+    
     NSSize framebufferSize = [self framebufferSize];
-    NSLog(@"framebufferSize=%d %d",
-          (int)framebufferSize.width,
-          (int)framebufferSize.height);
+
+    for (unsigned i = 0; i < FRAMEBUFFER_COUNT; i++) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, self->multisampleTextures[i]);
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE,
+                                [self samples],
+                                GL_RGBA,
+                                (GLint)framebufferSize.width,
+                                (GLint)framebufferSize.height,
+                                GL_TRUE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glBindRenderbuffer(GL_RENDERBUFFER, self->multisampleRenderbuffers[i]);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER,
+                                         [self samples],
+                                         GL_DEPTH_STENCIL,
+                                         (GLint)framebufferSize.width,
+                                         (GLint)framebufferSize.height);
+        glBindFramebuffer(GL_FRAMEBUFFER, self->multisampleFramebuffers[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER,
+                               GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D_MULTISAMPLE,
+                               self->multisampleTextures[i],
+                               0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER,
+                                  GL_DEPTH_STENCIL_ATTACHMENT,
+                                  GL_RENDERBUFFER,
+                                  self->multisampleRenderbuffers[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+    }
     
-    glGenTextures(1, &self->multisampleTexture);
-    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, self->multisampleTexture);
-    glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE,
-                            4,
-                            GL_RGBA,
-                            (GLint)framebufferSize.width,
-                            (GLint)framebufferSize.height,
-                            GL_TRUE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glGenRenderbuffers(1, &self->multisampleRenderbuffer);
-    glBindRenderbuffer(GL_RENDERBUFFER, self->multisampleRenderbuffer);
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER,
-                                     4,
-                                     GL_DEPTH_STENCIL,
-                                     (GLint)framebufferSize.width,
-                                     (GLint)framebufferSize.height);
-    glGenFramebuffers(1, &self->multisampleFramebuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, self->multisampleFramebuffer);
-    glFramebufferTexture2D(GL_FRAMEBUFFER,
-                           GL_COLOR_ATTACHMENT0,
-                           GL_TEXTURE_2D_MULTISAMPLE,
-                           self->multisampleTexture,
-                           0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER,
-                              GL_DEPTH_STENCIL_ATTACHMENT,
-                              GL_RENDERBUFFER,
-                              self->multisampleRenderbuffer);
-    NSLog(@"glCheckFramebufferStatus returns %x", glCheckFramebufferStatus(GL_FRAMEBUFFER));
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
-    
-    self->framebufferValid = YES;
+    self->framebuffersValid = YES;
 }
 
 - (void)frameChanged:(NSNotification *)notification {
-    self->framebufferValid = NO;
+    self->framebuffersValid = NO;
 }
 
 - (void)fillVertex:(GLfloat *)vertex withPoint:(NSPoint)point {
     NSSize viewSize = [self frame].size;
-    vertex[0] = point.x / viewSize.width * 2.0f - 1.0f;
-    vertex[1] = point.y / viewSize.height * 2.0f - 1.0f;
+    vertex[0] = point.x / viewSize.width;
+    vertex[1] = point.y / viewSize.height;
 }
 
 - (void)prepareOpenGL {
@@ -175,13 +183,22 @@ typedef enum DisplayListParsingState DisplayListParsingState;
                          name:@"composite"];
     glUseProgram(self->compositeProgram);
     self->compositePositionAttribute = glGetAttribLocation(self->compositeProgram, "aPosition");
-    self->compositeTextureUniform = glGetUniformLocation(self->compositeProgram, "uTexture");
+    for (unsigned i = 0; i < FRAMEBUFFER_COUNT; i++) {
+        NSString *uniformName = [NSString stringWithFormat:@"uTexture%u", i];
+        self->compositeTextureUniforms[i] = glGetUniformLocation(self->compositeProgram,
+                                                                 [uniformName cStringUsingEncoding:NSUTF8StringEncoding]);
+    }
     self->compositeTileSizeUniform = glGetUniformLocation(self->compositeProgram, "uTileSize");
     
     [self createOpenGLProgram:&self->clearProgram
              withVertexShader:&self->clearVertexShader
                fragmentShader:&self->clearFragmentShader
                          name:@"clear"];
+    
+    [self createOpenGLProgram:&self->tileProgram
+             withVertexShader:&self->tileVertexShader
+               fragmentShader:&self->tileFragmentShader
+                         name:@"tile"];
     
     glGenVertexArrays(1, &self->quadVertexArrayObject);
     glBindVertexArray(self->quadVertexArrayObject);
@@ -195,16 +212,47 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     glEnableVertexAttribArray(self->clearPositionAttribute);
     glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
     
-    glGenVertexArrays(1, &self->displayListVertexArrayObject);
-    glBindVertexArray(self->displayListVertexArrayObject);
+    glGenVertexArrays(1, &self->clearDisplayListVertexArrayObject);
+    glBindVertexArray(self->clearDisplayListVertexArrayObject);
     glUseProgram(self->clearProgram);
+    
+    glUseProgram(self->compositeProgram);
+    self->compositeTileSizeUniform = glGetUniformLocation(self->compositeProgram, "uTileSize");
 
     glGenBuffers(1, &self->displayListVertexBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, self->displayListVertexBuffer);
     glVertexAttribPointer(self->clearPositionAttribute, 2, GL_FLOAT, GL_FALSE, 0, (const GLvoid *)0);
     glEnableVertexAttribArray(self->clearPositionAttribute);
 
-    glGenQueries(1, &self->timeElapsedQuery);
+    glGenVertexArrays(1, &self->tileDisplayListVertexArrayObject);
+    glBindVertexArray(self->tileDisplayListVertexArrayObject);
+    glUseProgram(self->tileProgram);
+    self->tilePositionAttribute = glGetAttribLocation(self->tileProgram, "aPosition");
+    self->tileColorUniform = glGetUniformLocation(self->tileProgram, "uColor");
+    self->tileFramebufferSizeUniform = glGetUniformLocation(self->tileProgram, "uFramebufferSize");
+    
+    glBindBuffer(GL_ARRAY_BUFFER, self->displayListVertexBuffer);
+    glVertexAttribPointer(self->tilePositionAttribute, 2, GL_FLOAT, GL_FALSE, 0, (const GLvoid *)0);
+    glEnableVertexAttribArray(self->tilePositionAttribute);
+    
+    glGenQueries(1, &self->samplesPassedQuery);
+    glGenQueries(1, &self->tilingTimeElapsedQuery);
+    glGenQueries(1, &self->compositingTimeElapsedQuery);
+}
+
+- (void)waitForQueryToBeAvailable:(GLuint)query {
+    GLint available = 0;
+    while (available == 0) {
+        usleep(100);
+        glGetQueryObjectiv(query, GL_QUERY_RESULT_AVAILABLE, &available);
+    }
+}
+
+- (double)getTimingFor:(GLuint)query {
+    [self waitForQueryToBeAvailable:query];
+    GLuint64 timeElapsed = 0;
+    glGetQueryObjectui64vEXT(query, GL_QUERY_RESULT, &timeElapsed);
+    return (double)timeElapsed / (double)1000000.0;
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
@@ -212,38 +260,17 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     
     [[self openGLContext] makeCurrentContext];
     [[self openGLContext] update];
-    
-    glBeginQuery(GL_TIME_ELAPSED_EXT, self->timeElapsedQuery);
-    
+
     // Drawing code here.
-    if (!self->framebufferValid)
-        [self rebuildFramebuffer];
+    if (!self->framebuffersValid)
+        [self rebuildFramebuffers];
+
+    glBeginQuery(GL_TIME_ELAPSED_EXT, self->tilingTimeElapsedQuery);
 
     NSSize framebufferSize = [self framebufferSize];
-    glBindFramebuffer(GL_FRAMEBUFFER, self->multisampleFramebuffer);
-    glViewport(0, 0, (GLint)framebufferSize.width, (GLint)framebufferSize.height);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClearStencil(0);
-    glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-    // Initialize stencil buffer for routing.
-    glUseProgram(self->clearProgram);
-    glBindVertexArray(self->quadVertexArrayObject);
-    glBindBuffer(GL_ARRAY_BUFFER, self->quadVertexBuffer);
-    glEnable(GL_STENCIL_TEST);
-    glEnable(GL_MULTISAMPLE);
-    glEnable(GL_SAMPLE_MASK);
-    glUniform4f(self->clearColorUniform, 0.0f, 0.0f, 0.0f, 1.0f);
-    // TODO(pcwalton): Disable writing to the color buffer entirely.
-    for (unsigned sample = 0; sample < 4; sample++) {
-        glSampleMaski(0, 1 << sample);
-        glStencilFunc(GL_ALWAYS, sample + 1, ~0);
-        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    }
-    
     // Generate the display list vertices.
-    glBindVertexArray(self->displayListVertexArrayObject);
+    glBindVertexArray(self->clearDisplayListVertexArrayObject);
     glBindBuffer(GL_ARRAY_BUFFER, self->displayListVertexBuffer);
     size_t displayListVerticesSize = sizeof(GLfloat) * self->displayListSize * 12;
     GLfloat *displayListVertices = (GLfloat *)malloc(displayListVerticesSize);
@@ -261,46 +288,121 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     glBufferData(GL_ARRAY_BUFFER, displayListVerticesSize, displayListVertices, GL_DYNAMIC_DRAW);
     free(displayListVertices);
 
-    // Perform routed drawing.
-    glDisable(GL_MULTISAMPLE);
-    glDisable(GL_SAMPLE_MASK);
-    glEnable(GL_STENCIL_TEST);
-    glSampleMaski(0, ~0);
-    glStencilFunc(GL_EQUAL, 1, ~0);
-    glStencilOp(GL_DECR, GL_DECR, GL_DECR);
-    glUniform4f(self->clearColorUniform, 0.25f, 0.25f, 0.25f, 1.0f);
-    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)self->displayListSize * 6);
+    unsigned framebuffersUsed = 0;
+    while (framebuffersUsed < FRAMEBUFFER_COUNT) {
+        // Clear.
+        glBindFramebuffer(GL_FRAMEBUFFER, self->multisampleFramebuffers[framebuffersUsed]);
+        glViewport(0, 0, (GLint)framebufferSize.width, (GLint)framebufferSize.height);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearStencil(0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        // Initialize stencil buffer for routing.
+        glUseProgram(self->clearProgram);
+        glBindVertexArray(self->quadVertexArrayObject);
+        glBindBuffer(GL_ARRAY_BUFFER, self->quadVertexBuffer);
+        glEnable(GL_STENCIL_TEST);
+        glEnable(GL_MULTISAMPLE);
+        glEnable(GL_SAMPLE_MASK);
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glUniform4f(self->clearColorUniform, 0.0f, 0.0f, 0.0f, 1.0f);
+        for (unsigned sample = 0; sample < [self samples]; sample++) {
+            glSampleMaski(0, 1 << sample);
+            glStencilFunc(GL_ALWAYS, framebuffersUsed * [self samples] + sample + 2, ~0);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        }
+
+        // Perform routed drawing.
+        glUseProgram(self->tileProgram);
+        glBindVertexArray(self->tileDisplayListVertexArrayObject);
+        glBindBuffer(GL_ARRAY_BUFFER, self->displayListVertexBuffer);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDisable(GL_MULTISAMPLE);
+        glDisable(GL_SAMPLE_MASK);
+        glEnable(GL_STENCIL_TEST);
+        glSampleMaski(0, ~0);
+        glStencilFunc(GL_EQUAL, 2, ~0);
+        glStencilOp(GL_DECR, GL_DECR, GL_DECR);
+        GLfloat genericColor = (GLfloat)1.0 / (GLfloat)([self samples] * MIN(FRAMEBUFFER_COUNT, 8));
+        glUniform4f(self->tileColorUniform, genericColor, genericColor, genericColor, 1.0f);
+        glUniform2f(self->tileFramebufferSizeUniform, framebufferSize.width, framebufferSize.height);
+        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)self->displayListSize * 6);
+
+        // Check for overflow.
+        glUseProgram(self->clearProgram);
+        glBindVertexArray(self->quadVertexArrayObject);
+        glBindBuffer(GL_ARRAY_BUFFER, self->quadVertexBuffer);
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glEnable(GL_MULTISAMPLE);
+        glEnable(GL_SAMPLE_MASK);
+        glEnable(GL_STENCIL_TEST);
+        glSampleMaski(0, 1 << ([self samples] - 1));
+        glStencilFunc(GL_EQUAL, 0, ~0);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        glBeginQuery(GL_ANY_SAMPLES_PASSED, self->samplesPassedQuery);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glEndQuery(GL_ANY_SAMPLES_PASSED);
+        [self waitForQueryToBeAvailable:self->samplesPassedQuery];
+
+        framebuffersUsed++;
+
+        GLuint overflowed = 0;
+        glGetQueryObjectuiv(self->samplesPassedQuery, GL_QUERY_RESULT, &overflowed);
+        if (!overflowed)
+            break;
+    }
     
+    glEndQuery(GL_TIME_ELAPSED_EXT);
+
     // Composite.
+    glBeginQuery(GL_TIME_ELAPSED_EXT, self->compositingTimeElapsedQuery);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindVertexArray(self->quadVertexArrayObject);
     glBindBuffer(GL_ARRAY_BUFFER, self->quadVertexBuffer);
     float backingScaleFactor = [[self window] backingScaleFactor];
+    glDisable(GL_MULTISAMPLE);
+    glDisable(GL_SAMPLE_MASK);
+    glDisable(GL_STENCIL_TEST);
     glViewport(0,
                0,
                (GLint)([self frame].size.width * backingScaleFactor),
                (GLint)([self frame].size.height * backingScaleFactor));
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glUseProgram(self->compositeProgram);
-    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, self->multisampleTexture);
-    glUniform1i(self->compositeTextureUniform, 0); // FIXME(pcwalton): GL_TEXTURE0? I forget!
+    
+    for (unsigned i = 0; i < MIN(FRAMEBUFFER_COUNT, 8); i++) {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, self->multisampleTextures[i]);
+        glUniform1i(self->compositeTextureUniforms[i], i);
+    }
+
     glUniform1f(self->compositeTileSizeUniform, (GLfloat)[self tileSize]);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
-
     glEndQuery(GL_TIME_ELAPSED_EXT);
+
     glFlush();
+    double tilingTimeElapsed = [self getTimingFor:self->tilingTimeElapsedQuery];
+    double compositingTimeElapsed = [self getTimingFor:self->compositingTimeElapsedQuery];
+    double totalTimeElapsed = tilingTimeElapsed + compositingTimeElapsed;
+
+    [self->framebuffersUsedLabel setStringValue:[NSString stringWithFormat:@"%u framebuffer%s used",
+                                                 framebuffersUsed,
+                                                 framebuffersUsed == 1 ? "" : "s"]];
+
+    [self->tilingTimeLabel setStringValue:[NSString stringWithFormat:@"%.03f ms (%.02f%%) GPU tiling time",
+                                           tilingTimeElapsed,
+                                           (tilingTimeElapsed / totalTimeElapsed) * 100.0f]];
+    [self->compositingTimeLabel setStringValue:
+     [NSString stringWithFormat:@"%.03f ms (%.02f%%) GPU compositing time",
+                                compositingTimeElapsed,
+                                (compositingTimeElapsed / totalTimeElapsed) * 100.0f]];
+    [self->totalTimeLabel setStringValue:[NSString stringWithFormat:@"%.03f ms total GPU time",
+                                          totalTimeElapsed]];
+    
     [[NSOpenGLContext currentContext] flushBuffer];
-    
-    GLint available = 0;
-    while (available == 0) {
-        usleep(100);
-        glGetQueryObjectiv(self->timeElapsedQuery, GL_QUERY_RESULT_AVAILABLE, &available);
-    }
-    GLuint64 timeElapsed = 0;
-    glGetQueryObjectui64vEXT(self->timeElapsedQuery, GL_QUERY_RESULT, &timeElapsed);
-    
-    double timeElapsedMs = (double)timeElapsed / (double)1000000.0;
-    [self->timeLabel setStringValue:[NSString stringWithFormat:@"%.03f ms GPU time", timeElapsedMs]];
 }
 
 - (IBAction)redraw:(id)sender {
@@ -414,7 +516,9 @@ typedef enum DisplayListParsingState DisplayListParsingState;
         NSValue *item = nil;
         while ((item = [itemEnumerator nextObject]) != nil) {
             NSAssert(nextDisplayListItem < displayListItemsSize, @"Out of display item space!");
-            displayListItems[nextDisplayListItem] = [item rectValue];
+            displayListItems[nextDisplayListItem] = NSOffsetRect([item rectValue],
+                                                                 stackingContextOffset.x,
+                                                                 stackingContextOffset.y);
             nextDisplayListItem++;
         }
     }
@@ -441,6 +545,12 @@ typedef enum DisplayListParsingState DisplayListParsingState;
         }
         [self loadDisplayList:fileHandle];
     }];
+}
+
+- (IBAction)invalidateContextAndRedraw:(id)sender {
+    self->context = nil;
+    [self openGLContext];
+    [self setNeedsDisplay:YES];
 }
 
 @end

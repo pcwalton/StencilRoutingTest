@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		6AA688EB1D18BAD000B6819F /* tile.vs.glsl in Resources */ = {isa = PBXBuildFile; fileRef = 6AA688EA1D18BAD000B6819F /* tile.vs.glsl */; };
+		6AA688ED1D18BCA100B6819F /* tile.fs.glsl in Resources */ = {isa = PBXBuildFile; fileRef = 6AA688EC1D18BCA100B6819F /* tile.fs.glsl */; };
 		6AA93AED1D16C1220070D273 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 6AA93AEC1D16C1220070D273 /* AppDelegate.m */; };
 		6AA93AF01D16C1220070D273 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 6AA93AEF1D16C1220070D273 /* main.m */; };
 		6AA93AF21D16C1220070D273 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6AA93AF11D16C1220070D273 /* Assets.xcassets */; };
@@ -19,6 +21,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		6AA688EA1D18BAD000B6819F /* tile.vs.glsl */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = tile.vs.glsl; sourceTree = "<group>"; };
+		6AA688EC1D18BCA100B6819F /* tile.fs.glsl */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = tile.fs.glsl; sourceTree = "<group>"; };
 		6AA93AE81D16C1220070D273 /* StencilRoutingTest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StencilRoutingTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6AA93AEB1D16C1220070D273 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		6AA93AEC1D16C1220070D273 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
@@ -73,9 +77,11 @@
 				6AA93AF61D16C1220070D273 /* Info.plist */,
 				6AA93AEE1D16C1220070D273 /* Supporting Files */,
 				6AC632DF1D16D6B100DA1BF0 /* clear.fs.glsl */,
+				6AA688EC1D18BCA100B6819F /* tile.fs.glsl */,
 				6AC632D91D16C44D00DA1BF0 /* composite.fs.glsl */,
 				6AC632DD1D16D67400DA1BF0 /* clear.vs.glsl */,
 				6AC632DB1D16C4A000DA1BF0 /* composite.vs.glsl */,
+				6AA688EA1D18BAD000B6819F /* tile.vs.glsl */,
 			);
 			path = StencilRoutingTest;
 			sourceTree = "<group>";
@@ -146,11 +152,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				6AA93AF21D16C1220070D273 /* Assets.xcassets in Resources */,
+				6AA688ED1D18BCA100B6819F /* tile.fs.glsl in Resources */,
 				6AC632DE1D16D67400DA1BF0 /* clear.vs.glsl in Resources */,
 				6AA93AF51D16C1220070D273 /* MainMenu.xib in Resources */,
 				6AC632E01D16D6B100DA1BF0 /* clear.fs.glsl in Resources */,
 				6AC632DA1D16C44D00DA1BF0 /* composite.fs.glsl in Resources */,
 				6AC632DC1D16C4A000DA1BF0 /* composite.vs.glsl in Resources */,
+				6AA688EB1D18BAD000B6819F /* tile.vs.glsl in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
