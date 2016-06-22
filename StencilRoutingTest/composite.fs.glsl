@@ -22,7 +22,7 @@ out vec4 oFragColor;
         if (sourceUV == vec2(0.0)) \
             return; \
         vec4 source = texture(sourceTexture, sourceUV); \
-        fragColor = fragColor * (1.0 - source.a) + source; \
+        fragColor = fragColor * (1.0 - source.a) + source * source.a; \
     }
 
 void main() {

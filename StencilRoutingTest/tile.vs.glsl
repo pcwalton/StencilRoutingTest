@@ -22,5 +22,5 @@ void main() {
     else
         y = ceil(aPosition.y * uFramebufferSize.y);
     vSourceUV = aSourceUV;
-    gl_Position = vec4(vec2(x, y) / uFramebufferSize * 2.0 - 1.0, aPosition.z / 0.5, 1.0);
+    gl_Position = vec4(vec2(x, y) / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
 }

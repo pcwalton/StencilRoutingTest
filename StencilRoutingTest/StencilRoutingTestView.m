@@ -332,7 +332,7 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     size_t displayListVerticesSize = sizeof(Vertex) * self->displayListSize * 6;
     Vertex *displayListVertices = (Vertex *)malloc(displayListVerticesSize);
     for (unsigned i = 0; i < self->displayListSize; i++) {
-        CompiledDisplayListItem *displayListItem = &self->displayList[self->displayListSize - i - 1];
+        CompiledDisplayListItem *displayListItem = &self->displayList[i];
         NSPoint topLeftPosition = displayListItem->bounds.origin;
         NSPoint topRightPosition = NSMakePoint(NSMaxX(displayListItem->bounds),
                                                displayListItem->bounds.origin.y);
@@ -413,8 +413,7 @@ typedef enum DisplayListParsingState DisplayListParsingState;
         glDisable(GL_MULTISAMPLE);
         glDisable(GL_SAMPLE_MASK);
         glEnable(GL_STENCIL_TEST);
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_GEQUAL);
+        glDisable(GL_DEPTH_TEST);
         glSampleMaski(0, ~0);
         glStencilFunc(GL_EQUAL, 2, ~0);
         glStencilOp(GL_DECR, GL_DECR, GL_DECR);
@@ -515,7 +514,7 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     NSRectFill(NSMakeRect(0.0, 0.0, 256.0, 256.0));
     
     // Create the "greeking" checkerboard for text.
-    [[NSColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:0.2] setFill];
+    [[NSColor colorWithRed:1.0 green:1.0 blue:1.0 alpha:0.5] setFill];
     NSRectFill(NSMakeRect(1.0, 255.0, 1.0, 1.0));
     NSRectFill(NSMakeRect(0.0, 254.0, 1.0, 1.0));
     
