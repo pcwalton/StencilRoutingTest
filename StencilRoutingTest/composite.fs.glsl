@@ -16,24 +16,25 @@ uniform int uDepth;
 
 out vec4 oFragColor;
 
+#define BLEND(fragColor, sourceTexture, tileTexture, tileUV, sampleStart, sampleCount) \
+    for (int i = sampleStart; i < sampleCount; i++) { \
+        vec2 sourceUV = texelFetch(tileTexture, tileUV, i - sampleStart).st; \
+        if (sourceUV == vec2(0.0)) \
+            return; \
+        vec4 source = texture(sourceTexture, sourceUV); \
+        fragColor = fragColor * (1.0 - source.a) + source; \
+    }
+
 void main() {
     ivec2 uv = ivec2(int(floor((gl_FragCoord.x - 0.5) / uTileSize)),
                      int(floor((gl_FragCoord.y - 0.5) / uTileSize)));
     oFragColor = vec4(0.0);
-    for (int i = 0 * 8; i < min(uDepth, 1 * 8); i++)
-        oFragColor += texture(uSourceTexture, texelFetch(uTexture0, uv, i - 0 * 8).st);
-    for (int i = 1 * 8; i < min(uDepth, 2 * 8); i++)
-        oFragColor += texture(uSourceTexture, texelFetch(uTexture1, uv, i - 1 * 8).st);
-    for (int i = 2 * 8; i < min(uDepth, 3 * 8); i++)
-        oFragColor += texture(uSourceTexture, texelFetch(uTexture2, uv, i - 2 * 8).st);
-    for (int i = 3 * 8; i < min(uDepth, 4 * 8); i++)
-        oFragColor += texture(uSourceTexture, texelFetch(uTexture3, uv, i - 3 * 8).st);
-    for (int i = 4 * 8; i < min(uDepth, 5 * 8); i++)
-        oFragColor += texture(uSourceTexture, texelFetch(uTexture4, uv, i - 4 * 8).st);
-    for (int i = 5 * 8; i < min(uDepth, 6 * 8); i++)
-        oFragColor += texture(uSourceTexture, texelFetch(uTexture5, uv, i - 5 * 8).st);
-    for (int i = 6 * 8; i < min(uDepth, 7 * 8); i++)
-        oFragColor += texture(uSourceTexture, texelFetch(uTexture6, uv, i - 6 * 8).st);
-    for (int i = 7 * 8; i < min(uDepth, 8 * 8); i++)
-        oFragColor += texture(uSourceTexture, texelFetch(uTexture7, uv, i - 7 * 8).st);
+    BLEND(oFragColor, uSourceTexture, uTexture0, uv, 0 * 8, min(uDepth, 1 * 8));
+    BLEND(oFragColor, uSourceTexture, uTexture1, uv, 1 * 8, min(uDepth, 2 * 8));
+    BLEND(oFragColor, uSourceTexture, uTexture2, uv, 2 * 8, min(uDepth, 3 * 8));
+    BLEND(oFragColor, uSourceTexture, uTexture3, uv, 3 * 8, min(uDepth, 4 * 8));
+    BLEND(oFragColor, uSourceTexture, uTexture4, uv, 4 * 8, min(uDepth, 5 * 8));
+    BLEND(oFragColor, uSourceTexture, uTexture5, uv, 5 * 8, min(uDepth, 6 * 8));
+    BLEND(oFragColor, uSourceTexture, uTexture6, uv, 6 * 8, min(uDepth, 7 * 8));
+    BLEND(oFragColor, uSourceTexture, uTexture7, uv, 7 * 8, min(uDepth, 8 * 8));
 }

@@ -10,9 +10,16 @@
 
 #define FRAMEBUFFER_COUNT 8
 
+struct CompiledDisplayListItem {
+    NSRect bounds;
+    NSRect sourceUV;
+    BOOL opaque;
+};
+
+typedef struct CompiledDisplayListItem CompiledDisplayListItem;
+
 @interface StencilRoutingTestView : NSOpenGLView {
-    NSRect *displayList;
-    NSRect *displayListSourceUV;
+    CompiledDisplayListItem *displayList;
     size_t displayListSize;
     NSOpenGLContext *context;
     NSImage *sourceImage;

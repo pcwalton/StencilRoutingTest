@@ -13,20 +13,12 @@
 
 @implementation StencilRoutingTestView
 
-const NSRect initialDisplayList[] = {
-    { { 0.0f,   0.0f    }, { 400.0f, 400.0f } },
-    { { 400.0f, 0.0f    }, { 400.0f, 400.0f } },
-    { { 0.0f,   400.0f  }, { 400.0f, 400.0f } },
-    { { 400.0f, 400.0f  }, { 400.0f, 400.0f } },
-    { { 200.0f, 200.0f  }, { 400.0f, 400.0f } }
-};
-
-const NSRect initialDisplayListSourceUV[] = {
-    { { 2.0f, 0.0f }, { 1.0f, 1.0f } },
-    { { 2.0f, 0.0f }, { 1.0f, 1.0f } },
-    { { 2.0f, 0.0f }, { 1.0f, 1.0f } },
-    { { 2.0f, 0.0f }, { 1.0f, 1.0f } },
-    { { 1.0f, 0.0f }, { 1.0f, 1.0f } }
+const CompiledDisplayListItem initialDisplayList[] = {
+    { { { 0.0f,   0.0f    }, { 400.0f, 400.0f } }, { { 2.0f, 0.0f }, { 1.0f, 1.0f } }, NO },
+    { { { 400.0f, 0.0f    }, { 400.0f, 400.0f } }, { { 2.0f, 0.0f }, { 1.0f, 1.0f } }, NO },
+    { { { 0.0f,   400.0f  }, { 400.0f, 400.0f } }, { { 2.0f, 0.0f }, { 1.0f, 1.0f } }, NO },
+    { { { 400.0f, 400.0f  }, { 400.0f, 400.0f } }, { { 2.0f, 0.0f }, { 1.0f, 1.0f } }, NO },
+    { { { 200.0f, 200.0f  }, { 400.0f, 400.0f } }, { { 2.0f, 0.0f }, { 1.0f, 1.0f } }, NO }
 };
 
 const GLfloat quadVertices[] = {
@@ -45,6 +37,7 @@ enum DisplayListParsingState {
 struct Vertex {
     GLfloat x;
     GLfloat y;
+    GLfloat z;
     GLfloat u;
     GLfloat v;
 };
@@ -184,21 +177,20 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     [self invalidateFramebuffers];
 }
 
-- (void)fillVertex:(Vertex *)vertex withPosition:(NSPoint)position uv:(NSPoint)uv {
+- (void)fillVertex:(Vertex *)vertex withPosition:(NSPoint)position uv:(NSPoint)uv opaque:(BOOL)opaque {
     NSSize viewSize = [self frame].size;
     vertex->x = position.x / viewSize.width;
     vertex->y = position.y / viewSize.height;
+    vertex->z = opaque ? 1.0 : 0.0;
     vertex->u = uv.x;
     vertex->v = uv.y;
 }
 
 - (void)loadInitialDisplayList {
-    self->displayList = (NSRect *)malloc(sizeof(initialDisplayList));
-    self->displayListSourceUV = (NSRect *)malloc(sizeof(initialDisplayListSourceUV));
+    self->displayList = (CompiledDisplayListItem *)malloc(sizeof(initialDisplayList));
     memcpy(self->displayList, initialDisplayList, sizeof(initialDisplayList));
-    memcpy(self->displayListSourceUV, initialDisplayListSourceUV, sizeof(initialDisplayListSourceUV));
     self->displayListSize = sizeof(initialDisplayList) / sizeof(initialDisplayList[0]);
-    
+
     NSImage *initialSourceImage = [self createNewSourceImage];
     [[NSColor blueColor] setFill];
     NSRectFill(NSMakeRect(2.0, 255.0, 1.0, 1.0));
@@ -271,7 +263,7 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     glUseProgram(self->tileProgram);
     glBindBuffer(GL_ARRAY_BUFFER, self->displayListVertexBuffer);
     glVertexAttribPointer(self->tilePositionAttribute,
-                          2,
+                          3,
                           GL_FLOAT,
                           GL_FALSE,
                           sizeof(Vertex),
@@ -340,19 +332,22 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     size_t displayListVerticesSize = sizeof(Vertex) * self->displayListSize * 6;
     Vertex *displayListVertices = (Vertex *)malloc(displayListVerticesSize);
     for (unsigned i = 0; i < self->displayListSize; i++) {
-        NSPoint topLeftPosition = self->displayList[i].origin;
-        NSPoint topRightPosition = NSMakePoint(NSMaxX(self->displayList[i]), self->displayList[i].origin.y);
-        NSPoint bottomRightPosition = NSMakePoint(NSMaxX(self->displayList[i]),
-                                                  NSMaxY(self->displayList[i]));
-        NSPoint bottomLeftPosition = NSMakePoint(self->displayList[i].origin.x,
-                                                 NSMaxY(self->displayList[i]));
-        NSPoint uv = NSMakePoint(NSMidX(self->displayListSourceUV[i]), NSMidY(self->displayListSourceUV[i]));
-        [self fillVertex:&displayListVertices[i * 6 + 0] withPosition:topLeftPosition uv:uv];
-        [self fillVertex:&displayListVertices[i * 6 + 1] withPosition:topRightPosition uv:uv];
-        [self fillVertex:&displayListVertices[i * 6 + 2] withPosition:bottomLeftPosition uv:uv];
-        [self fillVertex:&displayListVertices[i * 6 + 3] withPosition:topRightPosition uv:uv];
-        [self fillVertex:&displayListVertices[i * 6 + 4] withPosition:bottomRightPosition uv:uv];
-        [self fillVertex:&displayListVertices[i * 6 + 5] withPosition:bottomLeftPosition uv:uv];
+        CompiledDisplayListItem *displayListItem = &self->displayList[self->displayListSize - i - 1];
+        NSPoint topLeftPosition = displayListItem->bounds.origin;
+        NSPoint topRightPosition = NSMakePoint(NSMaxX(displayListItem->bounds),
+                                               displayListItem->bounds.origin.y);
+        NSPoint bottomRightPosition = NSMakePoint(NSMaxX(displayListItem->bounds),
+                                                  NSMaxY(displayListItem->bounds));
+        NSPoint bottomLeftPosition = NSMakePoint(displayListItem->bounds.origin.x,
+                                                 NSMaxY(displayListItem->bounds));
+        NSPoint uv = NSMakePoint(NSMidX(displayListItem->sourceUV), NSMidY(displayListItem->sourceUV));
+        BOOL opaque = self->displayList[i].opaque;
+        [self fillVertex:&displayListVertices[i*6 + 0] withPosition:topLeftPosition uv:uv opaque:opaque];
+        [self fillVertex:&displayListVertices[i*6 + 1] withPosition:topRightPosition uv:uv opaque:opaque];
+        [self fillVertex:&displayListVertices[i*6 + 2] withPosition:bottomLeftPosition uv:uv opaque:opaque];
+        [self fillVertex:&displayListVertices[i*6 + 3] withPosition:topRightPosition uv:uv opaque:opaque];
+        [self fillVertex:&displayListVertices[i*6 + 4] withPosition:bottomRightPosition uv:uv opaque:opaque];
+        [self fillVertex:&displayListVertices[i*6 + 5] withPosition:bottomLeftPosition uv:uv opaque:opaque];
     }
     glBufferData(GL_ARRAY_BUFFER, displayListVerticesSize, displayListVertices, GL_DYNAMIC_DRAW);
     free(displayListVertices);
@@ -389,7 +384,8 @@ typedef enum DisplayListParsingState DisplayListParsingState;
         glViewport(0, 0, (GLint)framebufferSize.width, (GLint)framebufferSize.height);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClearStencil(0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glClearDepth(0.0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         // Initialize stencil buffer for routing.
         glUseProgram(self->clearProgram);
@@ -413,10 +409,12 @@ typedef enum DisplayListParsingState DisplayListParsingState;
         glBindVertexArray(self->tileDisplayListVertexArrayObject);
         glBindBuffer(GL_ARRAY_BUFFER, self->displayListVertexBuffer);
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDepthMask(GL_TRUE);
         glDisable(GL_MULTISAMPLE);
         glDisable(GL_SAMPLE_MASK);
         glEnable(GL_STENCIL_TEST);
-        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_GEQUAL);
         glSampleMaski(0, ~0);
         glStencilFunc(GL_EQUAL, 2, ~0);
         glStencilOp(GL_DECR, GL_DECR, GL_DECR);
@@ -517,7 +515,7 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     NSRectFill(NSMakeRect(0.0, 0.0, 256.0, 256.0));
     
     // Create the "greeking" checkerboard for text.
-    [[NSColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:1.0] setFill];
+    [[NSColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:0.2] setFill];
     NSRectFill(NSMakeRect(1.0, 255.0, 1.0, 1.0));
     NSRectFill(NSMakeRect(0.0, 254.0, 1.0, 1.0));
     
@@ -632,8 +630,8 @@ typedef enum DisplayListParsingState DisplayListParsingState;
     // Create the source image.
     NSImage *newSourceImage = [self createNewSourceImage];
     
-    NSRect *displayListItems = (NSRect *)malloc(sizeof(NSRect) * displayListItemsSize);
-    NSRect *displayListItemsSourceUV = (NSRect *)malloc(sizeof(NSRect) * displayListItemsSize);
+    CompiledDisplayListItem *displayListItems = (CompiledDisplayListItem *)
+        malloc(sizeof(CompiledDisplayListItem) * displayListItemsSize);
     size_t nextDisplayListItem = 0;
     NSEnumerator *stackingContextIdEnumerator = [stackingContextOrdering objectEnumerator];
     NSNumber *stackingContextId = nil;
@@ -651,7 +649,8 @@ typedef enum DisplayListParsingState DisplayListParsingState;
         NSEnumerator *itemEnumerator = [items objectEnumerator];
         DisplayListItem *item = nil;
         while ((item = [itemEnumerator nextObject]) != nil) {
-            NSAssert(nextDisplayListItem < displayListItemsSize, @"Out of display item space!");
+            NSRect sourceUV;
+            BOOL opaque = NO;
             if ([[item itemType] isEqualToString:@"SolidColor"]) {
                 NSString *description = [item itemDescription];
                 NSTextCheckingResult *textCheckingResult = [solidColorDescriptionRegex
@@ -664,6 +663,7 @@ typedef enum DisplayListParsingState DisplayListParsingState;
                 float a = [[description substringWithRange:[textCheckingResult rangeAtIndex:4]] floatValue];
                 if (a == 0.0f)
                     continue;
+                opaque = a == 1.0f;
 
                 NSColor *color = [NSColor colorWithRed:(CGFloat)r
                                                  green:(CGFloat)g
@@ -671,27 +671,23 @@ typedef enum DisplayListParsingState DisplayListParsingState;
                                                  alpha:(CGFloat)a];
                 [color setFill];
                 NSRectFill(NSMakeRect((CGFloat)nextSourceImageX, 255.0, 1.0, 1.0));
-                displayListItemsSourceUV[nextDisplayListItem] = NSMakeRect((CGFloat)nextSourceImageX,
-                                                                           0.0,
-                                                                           1.0,
-                                                                           1.0);
+                sourceUV = NSMakeRect((CGFloat)nextSourceImageX, 0.0, 1.0, 1.0);
                 nextSourceImageX++;
             } else {
-                displayListItemsSourceUV[nextDisplayListItem] = NSMakeRect(1.0, 0.0, 1.0, 1.0);
+                sourceUV = NSMakeRect(1.0, 0.0, 1.0, 1.0);
+                opaque = NO;
             }
 
-            displayListItems[nextDisplayListItem] = NSOffsetRect([item bounds],
-                                                                 stackingContextOffset.x,
-                                                                 stackingContextOffset.y);
-            
+            NSRect bounds = NSOffsetRect([item bounds], stackingContextOffset.x, stackingContextOffset.y);
+            CompiledDisplayListItem compiledDisplayListItem = { bounds, sourceUV, opaque };
+            NSAssert(nextDisplayListItem < displayListItemsSize, @"Out of display item space!");
+            displayListItems[nextDisplayListItem] = compiledDisplayListItem;
             nextDisplayListItem++;
         }
     }
 
     free(self->displayList);
-    free(self->displayListSourceUV);
     self->displayList = displayListItems;
-    self->displayListSourceUV = displayListItemsSourceUV;
     self->displayListSize = nextDisplayListItem;
     
     [self finalizeSourceImage:newSourceImage];
